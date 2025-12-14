@@ -3,55 +3,44 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import IsolationForest
-import plotly.express as px
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.callbacks import EarlyStopping
+import plotly.express as px
 
-# -------------------------------
-# Page Configuration
-# -------------------------------
-st.set_page_config(
-    page_title="AI Fraud Detection System",
-    layout="wide"
-)
+# -------------------------------------------------
+# Page Config
+# -------------------------------------------------
+st.set_page_config(page_title="AI Fraud Detection System", layout="wide")
 
 st.title("🚨 AI Fraud & Anomaly Detection System")
-st.write("Detecting suspicious transactions using advanced ML and DL models.")
+st.write("Enterprise-grade fraud detection using ML + Deep Learning")
 
 st.info(
-    "📌 Upload a CSV file containing transaction data. "
-    "The system will validate the data and automatically detect usable features."
+    "Upload a transaction CSV file. "
+    "The system uses multiple anomaly detection models and ensemble risk scoring."
 )
 
-# -------------------------------
-# CSV Upload
-# -------------------------------
-uploaded_file = st.file_uploader(
-    "Upload Transaction CSV File",
-    type=["csv"]
-)
+# -------------------------------------------------
+# File Upload
+# -------------------------------------------------
+uploaded_file = st.file_uploader("Upload Transaction CSV", type=["csv"])
 
-# -------------------------------
-# Phase 2: Data Handling
-# -------------------------------
 if uploaded_file is not None:
 
+    # -------------------------------------------------
+    # Phase 2 — Data Handling
+    # -------------------------------------------------
     df = pd.read_csv(uploaded_file)
-
-    st.subheader("📄 Uploaded Data Preview")
-    st.dataframe(df.head())
-
     numeric_df = df.select_dtypes(include=["int64", "float64"]).dropna()
 
     if numeric_df.shape[1] == 0:
-        st.error("❌ No numeric columns found.")
+        st.error("No numeric columns found.")
         st.stop()
 
-    # =====================================================
-    # PHASE 3 — FEATURE ENGINEERING
-    # =====================================================
-
+    # -------------------------------------------------
+    # Phase 3 — Feature Engineering
+    # -------------------------------------------------
     engineered_df = numeric_df.copy()
 
     for col in engineered_df.columns:
@@ -64,40 +53,25 @@ if uploaded_file is not None:
     engineered_df["row_variance"] = engineered_df.var(axis=1)
     engineered_df["transaction_intensity"] = engineered_df.sum(axis=1)
 
-    # =====================================================
-    # PHASE 4 — FEATURE SCALING
-    # =====================================================
-
+    # -------------------------------------------------
+    # Phase 4 — Scaling
+    # -------------------------------------------------
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(engineered_df)
     X_scaled_df = pd.DataFrame(X_scaled, columns=engineered_df.columns)
 
-    # =====================================================
-    # PHASE 5 — ISOLATION FOREST
-    # =====================================================
-
-    iso = IsolationForest(
-        n_estimators=300,
-        contamination=0.05,
-        random_state=42
-    )
+    # -------------------------------------------------
+    # Phase 5 — Isolation Forest
+    # -------------------------------------------------
+    iso = IsolationForest(n_estimators=300, contamination=0.05, random_state=42)
     iso.fit(X_scaled_df)
 
-    df["iso_label"] = iso.predict(X_scaled_df)
-    df["iso_score"] = iso.decision_function(X_scaled_df)
+    df["iso_score"] = -iso.decision_function(X_scaled_df)
+    df["iso_flag"] = iso.predict(X_scaled_df) == -1
 
-    # =====================================================
-    # PHASE 6 — AUTOENCODER
-    # =====================================================
-
-    st.markdown("---")
-    st.header("🧠 Phase 6: Deep Autoencoder Anomaly Detection")
-
-    st.write(
-        "The autoencoder learns normal transaction patterns and "
-        "flags records with high reconstruction error."
-    )
-
+    # -------------------------------------------------
+    # Phase 6 — Autoencoder
+    # -------------------------------------------------
     input_dim = X_scaled_df.shape[1]
 
     autoencoder = Sequential([
@@ -109,66 +83,42 @@ if uploaded_file is not None:
         Dense(input_dim, activation="linear")
     ])
 
-    autoencoder.compile(
-        optimizer="adam",
-        loss="mse"
-    )
-
-    early_stop = EarlyStopping(
-        monitor="loss",
-        patience=5,
-        restore_best_weights=True
-    )
+    autoencoder.compile(optimizer="adam", loss="mse")
 
     autoencoder.fit(
-        X_scaled_df,
-        X_scaled_df,
+        X_scaled_df, X_scaled_df,
         epochs=50,
         batch_size=32,
         verbose=0,
-        callbacks=[early_stop]
+        callbacks=[EarlyStopping(patience=5, restore_best_weights=True)]
     )
 
-    # Reconstruction error
-    reconstructions = autoencoder.predict(X_scaled_df, verbose=0)
-    reconstruction_error = np.mean(
-        np.square(X_scaled_df - reconstructions),
-        axis=1
-    )
+    recon = autoencoder.predict(X_scaled_df, verbose=0)
+    df["ae_error"] = np.mean(np.square(X_scaled_df - recon), axis=1)
 
-    df["ae_error"] = reconstruction_error
+    # -------------------------------------------------
+    # PHASE 7 — ENSEMBLE RISK SCORING
+    # -------------------------------------------------
+    st.markdown("---")
+    st.header("🧠 Phase 7: Ensemble Fraud Risk Scoring")
 
-    # Threshold based on percentile
-    threshold = np.percentile(reconstruction_error, 95)
-    df["ae_anomaly"] = df["ae_error"] > threshold
+    # Normalize scores
+    df["iso_norm"] = df["iso_score"] / df["iso_score"].max()
+    df["ae_norm"] = df["ae_error"] / df["ae_error"].max()
 
-    # -------------------------------
-    # Autoencoder Results
-    # -------------------------------
-    st.subheader("📌 Autoencoder Results Summary")
+    # Ensemble score (weighted)
+    df["fraud_risk_score"] = (
+        0.5 * df["iso_norm"] +
+        0.5 * df["ae_norm"]
+    ) * 100
 
-    ae_count = df["ae_anomaly"].sum()
-    st.write(f"🚨 Detected Anomalies (Autoencoder): **{ae_count}**")
+    # Risk categories
+    def risk_label(score):
+        if score < 30:
+            return "Low Risk"
+        elif score < 60:
+            return "Medium Risk"
+        else:
+            return "High Risk"
 
-    st.subheader("🚨 Autoencoder Flagged Transactions")
-    st.dataframe(df[df["ae_anomaly"] == True])
-
-    # -------------------------------
-    # Visualization
-    # -------------------------------
-    st.subheader("📈 Reconstruction Error Distribution")
-
-    fig = px.scatter(
-        df,
-        x=df.index,
-        y="ae_error",
-        color=df["ae_anomaly"].map({True: "Anomaly", False: "Normal"}),
-        title="Autoencoder Reconstruction Errors",
-        labels={"ae_error": "Reconstruction Error"}
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.success(
-        "✅ Phase 6 completed: Autoencoder successfully detected anomalies."
-    )
+    df["risk_level"] = df["fraud_risk_score"].apply(_]()
