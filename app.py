@@ -121,4 +121,53 @@ if uploaded_file is not None:
         else:
             return "High Risk"
 
-    df["risk_level"] = df["fraud_risk_score"].apply(_]()
+    df["risk_level"] = df["fraud_risk_score"].apply(risk_label)
+
+    # Explainability
+    def explain(row):
+        reasons = []
+        if row["iso_flag"]:
+            reasons.append("Unusual global pattern")
+        if row["ae_error"] > df["ae_error"].quantile(0.95):
+            reasons.append("Abnormal behaviour pattern")
+        return ", ".join(reasons)
+
+    df["explanation"] = df.apply(explain, axis=1)
+
+    # -------------------------------------------------
+    # Results
+    # -------------------------------------------------
+    st.subheader("📊 Fraud Risk Overview")
+    st.dataframe(
+        df[["fraud_risk_score", "risk_level", "explanation"]]
+        .sort_values("fraud_risk_score", ascending=False)
+    )
+
+    # -------------------------------------------------
+    # Visualization
+    # -------------------------------------------------
+    st.subheader("📈 Fraud Risk Distribution")
+
+    fig = px.scatter(
+        df,
+        x=df.index,
+        y="fraud_risk_score",
+        color="risk_level",
+        title="Ensemble Fraud Risk Scores",
+        labels={"fraud_risk_score": "Risk Score (0–100)"}
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # -------------------------------------------------
+    # Download Report
+    # -------------------------------------------------
+    st.subheader("⬇️ Download Fraud Report")
+
+    st.download_button(
+        "Download Fraud Report (CSV)",
+        df.to_csv(index=False),
+        "fraud_detection_report.csv",
+        "text/csv"
+    )
+
+    st.success("✅ Phase 7 completed: Final fraud decision generated.")
