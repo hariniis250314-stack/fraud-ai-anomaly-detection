@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 
 # -------------------------------
 # Page Configuration
@@ -67,46 +68,72 @@ if uploaded_file is not None:
     st.markdown("---")
     st.header("🧠 Phase 3: Feature Engineering")
 
-    st.write(
-        "This phase transforms raw numeric values into "
-        "behaviour-based features used for fraud detection."
-    )
-
     engineered_df = numeric_df.copy()
 
-    # -------------------------------
-    # Feature 1: Log Transformation
-    # -------------------------------
+    # Log transformation
     for col in engineered_df.columns:
         engineered_df[f"{col}_log"] = np.log1p(engineered_df[col])
 
-    # -------------------------------
-    # Feature 2: Z-Score (Deviation)
-    # -------------------------------
+    # Z-score deviation
     z_scores = np.abs(
         (engineered_df - engineered_df.mean()) / engineered_df.std()
     )
     engineered_df["max_z_score"] = z_scores.max(axis=1)
 
-    # -------------------------------
-    # Feature 3: Row-wise Variance (Behaviour Spread)
-    # -------------------------------
+    # Behaviour spread
     engineered_df["row_variance"] = engineered_df.var(axis=1)
 
-    # -------------------------------
-    # Feature 4: Transaction Intensity
-    # -------------------------------
+    # Transaction intensity
     engineered_df["transaction_intensity"] = engineered_df.sum(axis=1)
 
-    # -------------------------------
-    # Preview Engineered Features
-    # -------------------------------
     st.subheader("🧪 Engineered Feature Preview")
     st.dataframe(engineered_df.head())
 
-    st.subheader("📐 Engineered Feature Summary")
-    st.write(engineered_df.describe())
+    st.success("✅ Phase 3 completed: Behavioural features engineered.")
 
+    # =====================================================
+    # PHASE 4 — FEATURE SCALING & MODEL READINESS
+    # =====================================================
+
+    st.markdown("---")
+    st.header("⚙️ Phase 4: Feature Scaling & Model Readiness")
+
+    st.write(
+        "This phase standardizes engineered features so that "
+        "machine learning and deep learning models can operate correctly."
+    )
+
+    # -------------------------------
+    # Scaling
+    # -------------------------------
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(engineered_df)
+
+    X_scaled_df = pd.DataFrame(
+        X_scaled,
+        columns=engineered_df.columns,
+        index=engineered_df.index
+    )
+
+    # -------------------------------
+    # Scaled Data Preview
+    # -------------------------------
+    st.subheader("📐 Scaled Feature Preview")
+    st.dataframe(X_scaled_df.head())
+
+    # -------------------------------
+    # Distribution Check
+    # -------------------------------
+    st.subheader("📊 Scaled Feature Statistics")
+    st.write(X_scaled_df.describe())
+
+    # -------------------------------
+    # Model Readiness Confirmation
+    # -------------------------------
     st.success(
-        "✅ Phase 3 completed: Behavioural features engineered successfully."
+        "✅ Phase 4 completed: Features scaled and ready for anomaly detection models."
+    )
+
+    st.info(
+        "🚀 The dataset is now suitable for Isolation Forest and Autoencoder models."
     )
