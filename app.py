@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import IsolationForest
+import plotly.express as px
 
 # -------------------------------
 # Page Configuration
@@ -56,56 +58,30 @@ if uploaded_file is not None:
 
     numeric_df = numeric_df.dropna()
 
-    st.subheader("🔍 Numeric Data Preview")
-    st.dataframe(numeric_df.head())
-
-    st.success("✅ Phase 2 completed: Data validated successfully.")
+    st.success("✅ Phase 2 completed: Data validated.")
 
     # =====================================================
     # PHASE 3 — FEATURE ENGINEERING
     # =====================================================
 
-    st.markdown("---")
-    st.header("🧠 Phase 3: Feature Engineering")
-
     engineered_df = numeric_df.copy()
 
-    # Log transformation
     for col in engineered_df.columns:
         engineered_df[f"{col}_log"] = np.log1p(engineered_df[col])
 
-    # Z-score deviation
     z_scores = np.abs(
         (engineered_df - engineered_df.mean()) / engineered_df.std()
     )
     engineered_df["max_z_score"] = z_scores.max(axis=1)
-
-    # Behaviour spread
     engineered_df["row_variance"] = engineered_df.var(axis=1)
-
-    # Transaction intensity
     engineered_df["transaction_intensity"] = engineered_df.sum(axis=1)
 
-    st.subheader("🧪 Engineered Feature Preview")
-    st.dataframe(engineered_df.head())
-
-    st.success("✅ Phase 3 completed: Behavioural features engineered.")
+    st.success("✅ Phase 3 completed: Features engineered.")
 
     # =====================================================
-    # PHASE 4 — FEATURE SCALING & MODEL READINESS
+    # PHASE 4 — FEATURE SCALING
     # =====================================================
 
-    st.markdown("---")
-    st.header("⚙️ Phase 4: Feature Scaling & Model Readiness")
-
-    st.write(
-        "This phase standardizes engineered features so that "
-        "machine learning and deep learning models can operate correctly."
-    )
-
-    # -------------------------------
-    # Scaling
-    # -------------------------------
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(engineered_df)
 
@@ -115,25 +91,71 @@ if uploaded_file is not None:
         index=engineered_df.index
     )
 
-    # -------------------------------
-    # Scaled Data Preview
-    # -------------------------------
-    st.subheader("📐 Scaled Feature Preview")
-    st.dataframe(X_scaled_df.head())
+    st.success("✅ Phase 4 completed: Features scaled.")
 
-    # -------------------------------
-    # Distribution Check
-    # -------------------------------
-    st.subheader("📊 Scaled Feature Statistics")
-    st.write(X_scaled_df.describe())
+    # =====================================================
+    # PHASE 5 — ISOLATION FOREST
+    # =====================================================
 
-    # -------------------------------
-    # Model Readiness Confirmation
-    # -------------------------------
-    st.success(
-        "✅ Phase 4 completed: Features scaled and ready for anomaly detection models."
+    st.markdown("---")
+    st.header("🌲 Phase 5: Isolation Forest Anomaly Detection")
+
+    contamination = st.slider(
+        "Expected Fraud Ratio (Contamination)",
+        min_value=0.01,
+        max_value=0.20,
+        value=0.05,
+        step=0.01
     )
 
-    st.info(
-        "🚀 The dataset is now suitable for Isolation Forest and Autoencoder models."
+    iso_model = IsolationForest(
+        n_estimators=300,
+        contamination=contamination,
+        random_state=42
+    )
+
+    iso_model.fit(X_scaled_df)
+
+    # Predictions
+    df["iso_anomaly"] = iso_model.predict(X_scaled_df)
+    df["iso_score"] = iso_model.decision_function(X_scaled_df)
+
+    # Convert labels
+    df["iso_anomaly_label"] = df["iso_anomaly"].map({
+        1: "Normal",
+        -1: "Anomaly"
+    })
+
+    # -------------------------------
+    # Results Summary
+    # -------------------------------
+    st.subheader("📌 Isolation Forest Results Summary")
+
+    anomaly_count = (df["iso_anomaly"] == -1).sum()
+    st.write(f"🚨 Detected Anomalies: **{anomaly_count}**")
+
+    # -------------------------------
+    # Anomaly Table
+    # -------------------------------
+    st.subheader("🚨 Flagged Anomalous Transactions")
+    st.dataframe(df[df["iso_anomaly"] == -1])
+
+    # -------------------------------
+    # Visualization
+    # -------------------------------
+    st.subheader("📈 Anomaly Score Distribution")
+
+    fig = px.scatter(
+        df,
+        x=df.index,
+        y="iso_score",
+        color="iso_anomaly_label",
+        title="Isolation Forest Anomaly Scores",
+        labels={"iso_score": "Anomaly Score", "index": "Transaction Index"}
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.success(
+        "✅ Phase 5 completed: Isolation Forest successfully detected anomalies."
     )
